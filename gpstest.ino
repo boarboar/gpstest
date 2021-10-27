@@ -23,6 +23,8 @@ GPS (PB10/PB11)
 #define SPEAKER_TONE_ALARM 880
 #define SPEAKER_TONE_ALARM_INC 80
 
+#define NLIMITS 3
+
 #define SPEAKER_PIN PB13
 
 Adafruit_SSD1306 display(OLED_RESET);
@@ -47,6 +49,20 @@ uint32_t startTime;
 uint32_t procTime;
 
 unsigned int uPrevSpeed;
+
+struct SpeedLimit {
+  unsigned int speed;
+  unsigned int alr_on;
+  unsigned int alr_off;
+  unsigned int alr_override;
+  unsigned int tone;
+};
+
+const struct SpeedLimit SpeedLimits[NLIMITS] = {
+  { 60, 60, 58, 62, SPEAKER_TONE_ALARM},
+  { 80, 78, 76, 85, SPEAKER_TONE_ALARM},
+  { 110, 108, 106, 115, SPEAKER_TONE_ALARM}
+};
 
 void setup() {
   
@@ -132,17 +148,17 @@ void loop() {
 
 
 void demo() {
-  displaySpeed(0, 1, 5, 0, 0);
+  displaySpeed(0, 1, 5, 0, 0, 60);
   tone(SPEAKER_PIN, 20);
-  delay(200);
-  displaySpeed(9, 2, 4, 90, -1);
+  delay(400);
+  displaySpeed(9, 2, 4, 90, -1, 60);
   tone(SPEAKER_PIN, 400);
-  delay(200);
-  displaySpeed(99, 2, 3, 180, 1);
+  delay(400);
+  displaySpeed(99, 2, 3, 180, 1, 110);
   //display.drawRect(0, 0, 92, 32, WHITE);
   tone(SPEAKER_PIN, 800);
-  delay(200);
-  displaySpeed(999, 2, 2, 270, 1);
+  delay(400);
+  displaySpeed(130, 2, 2, 270, 1, 0);
   //display.drawRect(0, 0, 92, 32, WHITE);
   display.drawFastHLine(1, 1, 92, WHITE);
   tone(SPEAKER_PIN, 1600);
@@ -153,13 +169,13 @@ void demo() {
 void processData() {
     float flat, flon, fspeed, fcourse;
     unsigned long age, hdop;
-    unsigned short sats;
+    unsigned int sats;
     sats = gps.satellites();
     fspeed = gps.f_speed_kmph();
     hdop = gps.hdop();
     fcourse = gps.f_course();
-    sats = sats == TinyGPS::GPS_INVALID_SATELLITES ? 0 : sats;
-    hdop = hdop == TinyGPS::GPS_INVALID_HDOP ? 0 : hdop;
+    //sats = sats == TinyGPS::GPS_INVALID_SATELLITES ? 0 : sats;
+    //hdop = hdop == TinyGPS::GPS_INVALID_HDOP ? 0 : hdop;
     fspeed = fspeed == TinyGPS::GPS_INVALID_F_SPEED ? 0 : fspeed;
     fcourse = fcourse == TinyGPS::GPS_INVALID_F_ANGLE ? 0 : fcourse;
 //    gps.f_get_position(&flat, &flon, &age);
@@ -180,7 +196,10 @@ void processData() {
     //if(fspeed-uspeed >= 0.5) uspeed++;
     unsigned int uspeed = round(fspeed);
     if(uspeed < SPEED_THR) uspeed = 0;
-    displaySpeed(uspeed, sats, round(hdop/100.0f), round(fcourse), uspeed-uPrevSpeed);
+    int limit_idx = getLimit(uspeed);
+    unsigned int limit_speed = limit_idx < 0 ? 0 : SpeedLimits[limit_idx].speed;
+    displaySpeed(uspeed, sats, round(hdop/100.0f), round(fcourse), uspeed-uPrevSpeed, limit_speed);
+    
     if(!signalOn) {
       if(uspeed > SPEED_ALR_THR_ON) {
         signalOn = true;
@@ -196,7 +215,7 @@ void processData() {
     uPrevSpeed = uspeed;
 }
 
-void displaySpeed(unsigned int uspeed, unsigned int sats, unsigned int hdop, unsigned int course, int diff) {
+void displaySpeed(unsigned int uspeed, unsigned int sats, unsigned int hdop, unsigned int course, int diff, unsigned int limit_speed) {
   display.clearDisplay();
   display.setTextSize(4);
   display.setCursor(0,0);
@@ -211,6 +230,7 @@ void displaySpeed(unsigned int uspeed, unsigned int sats, unsigned int hdop, uns
   display.setTextSize(1); // 2
   display.setCursor(80,24);
   display.print("km/h");
+  /*
   display.setTextSize(1);
   display.setCursor(100,0);
   display.print(sats);
@@ -220,5 +240,20 @@ void displaySpeed(unsigned int uspeed, unsigned int sats, unsigned int hdop, uns
   display.print(course);
   display.print(" ");
   display.print(diff ==0 ? ' ' : diff>0 ? 'U' : 'D');
+  */
+  if(limit_speed > 0) {
+    display.setTextSize(2);
+    display.setCursor(92,0);
+    display.print(limit_speed);
+  }
   display.display();
+}
+
+int getLimit(unsigned int uspeed) {
+  for(int i=0; i<NLIMITS; i++) {
+    if(uspeed < SpeedLimits[i].alr_override) {
+      return i;
+    }
+  }
+  return -1;
 }
