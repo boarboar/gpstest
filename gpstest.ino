@@ -16,9 +16,9 @@ GPS (PB10/PB11)
 
 #define SPEED_THR  2
 
-#define SPEED_ALR_THR_ON  78
-#define SPEED_ALR_THR_OFF  76
-#define SPEED_FAST_STEP    2
+//#define SPEED_ALR_THR_ON  78
+//#define SPEED_ALR_THR_OFF  76
+//#define SPEED_FAST_STEP    2
 
 #define SPEAKER_TONE_ALARM 880
 #define SPEAKER_TONE_ALARM_INC 80
@@ -52,16 +52,18 @@ unsigned int uPrevSpeed;
 
 struct SpeedLimit {
   unsigned int speed;
+  //unsigned int alr_low_on;
+  //unsigned int alr_low_off;
+  //unsigned int alr_override;
   unsigned int alr_on;
   unsigned int alr_off;
-  unsigned int alr_override;
   unsigned int tone;
 };
 
 const struct SpeedLimit SpeedLimits[NLIMITS] = {
-  { 60, 60, 58, 62, SPEAKER_TONE_ALARM},
-  { 80, 78, 76, 85, SPEAKER_TONE_ALARM},
-  { 110, 108, 106, 115, SPEAKER_TONE_ALARM}
+  { 60, 0, 1, SPEAKER_TONE_ALARM},
+  { 80, 2, 4, SPEAKER_TONE_ALARM},
+  { 110, 4, 8, SPEAKER_TONE_ALARM}
 };
 
 void setup() {
@@ -199,19 +201,37 @@ void processData() {
     int limit_idx = getLimit(uspeed);
     unsigned int limit_speed = limit_idx < 0 ? 0 : SpeedLimits[limit_idx].speed;
     displaySpeed(uspeed, sats, round(hdop/100.0f), round(fcourse), uspeed-uPrevSpeed, limit_speed);
-    
-    if(!signalOn) {
-      if(uspeed > SPEED_ALR_THR_ON) {
-        signalOn = true;
-        tone(SPEAKER_PIN, SPEAKER_TONE_ALARM+(uspeed-SPEED_ALR_THR_ON)*SPEAKER_TONE_ALARM_INC);
-      }
-    } else { // signal on
-       if(uspeed < SPEED_ALR_THR_OFF) {
-        signalOn = false;
-        noTone(SPEAKER_PIN);
-      }    
-    }
 
+    if(limit_idx>=0) {  
+//      if(!signalOn) {
+//        if(uspeed > SPEED_ALR_THR_ON) {
+//          signalOn = true;
+//          tone(SPEAKER_PIN, SPEAKER_TONE_ALARM+(uspeed-SPEED_ALR_THR_ON)*SPEAKER_TONE_ALARM_INC);
+//        }
+//      } else { // signal on
+//         if(uspeed < SPEED_ALR_THR_OFF) {
+//          signalOn = false;
+//          noTone(SPEAKER_PIN);
+//        }    
+//      }
+
+      if(!signalOn) {
+        if(uspeed > SpeedLimits[limit_idx].speed-SpeedLimits[limit_idx].alr_on) {
+          signalOn = true;
+          tone(SPEAKER_PIN, SPEAKER_TONE_ALARM+(uspeed-SpeedLimits[limit_idx].speed)*SPEAKER_TONE_ALARM_INC);
+        }
+      } else { // signal on
+         if(uspeed < SpeedLimits[limit_idx].speed-SpeedLimits[limit_idx].alr_off || uspeed > SpeedLimits[limit_idx].speed+SpeedLimits[limit_idx].alr_off) {
+          signalOn = false;
+          noTone(SPEAKER_PIN);
+        }    
+      }
+    } else {
+      if(signalOn) {
+        signalOn = false;
+          noTone(SPEAKER_PIN);
+      }
+    }
     uPrevSpeed = uspeed;
 }
 
@@ -251,7 +271,7 @@ void displaySpeed(unsigned int uspeed, unsigned int sats, unsigned int hdop, uns
 
 int getLimit(unsigned int uspeed) {
   for(int i=0; i<NLIMITS; i++) {
-    if(uspeed < SpeedLimits[i].alr_override) {
+    if(uspeed < SpeedLimits[i].speed + SpeedLimits[i].alr_off) {
       return i;
     }
   }
